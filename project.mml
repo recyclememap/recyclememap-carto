@@ -67,14 +67,14 @@ Layer:
             COALESCE(wetland, landuse, "natural") AS feature
           FROM (SELECT
               way,
-              ('landuse_' || (CASE WHEN landuse IN ('forest', 'farmland', 'residential', 'commercial', 'retail', 'industrial',
+              ('landuse_' || (CASE WHEN landuse IN ('forest', 'farmland', 'commercial', 'retail', 'industrial',
                                                     'meadow', 'grass', 'village_green', 'vineyard', 'orchard') THEN landuse END)) AS landuse,
               ('natural_' || (CASE WHEN "natural" IN ('wood', 'sand', 'scree', 'shingle', 'bare_rock', 'heath', 'grassland', 'scrub') THEN "natural" END)) AS "natural",
               ('wetland_' || (CASE WHEN "natural" IN ('wetland', 'mud') THEN (CASE WHEN "natural" IN ('mud') THEN "natural" ELSE tags->'wetland' END) END)) AS wetland,
               way_area/NULLIF(POW(!scale_denominator!*0.001*0.28,2),0) AS way_pixels,
               way_area
             FROM planet_osm_polygon
-            WHERE (landuse IN ('forest', 'farmland', 'residential', 'commercial', 'retail', 'industrial', 'meadow', 'grass', 'village_green', 'vineyard', 'orchard')
+            WHERE (landuse IN ('forest', 'farmland', 'commercial', 'retail', 'industrial', 'meadow', 'grass', 'village_green', 'vineyard', 'orchard')
               OR "natural" IN ('wood', 'wetland', 'mud', 'sand', 'scree', 'shingle', 'bare_rock', 'heath', 'grassland', 'scrub'))
               AND way_area > 0.01*!pixel_width!::real*!pixel_height!::real
               AND building IS NULL
@@ -1107,59 +1107,6 @@ Layer:
     properties:
       minzoom: 1
       maxzoom: 3
-  - id: admin-low-zoom
-    geometry: linestring
-    <<: *extents
-    Datasource:
-      <<: *osm2pgsql
-      table: |-
-        (SELECT
-            way,
-            admin_level
-          FROM planet_osm_roads
-          WHERE boundary = 'administrative'
-            AND admin_level IN ('0', '1', '2', '3', '4')
-            AND osm_id < 0
-          ORDER BY admin_level DESC
-        ) AS admin_low_zoom
-    properties:
-      minzoom: 4
-      maxzoom: 7
-  - id: admin-mid-zoom
-    geometry: linestring
-    <<: *extents
-    Datasource:
-      <<: *osm2pgsql
-      table: |-
-        (SELECT
-            way,
-            admin_level
-          FROM planet_osm_roads
-          WHERE boundary = 'administrative'
-            AND admin_level IN ('0', '1', '2', '3', '4', '5', '6', '7', '8')
-            AND osm_id < 0
-          ORDER BY admin_level DESC
-        ) AS admin_mid_zoom
-    properties:
-      minzoom: 8
-      maxzoom: 12
-  - id: admin-high-zoom
-    geometry: linestring
-    <<: *extents
-    Datasource:
-      <<: *osm2pgsql
-      table: |-
-        (SELECT
-            way,
-            admin_level
-          FROM planet_osm_roads
-          WHERE boundary = 'administrative'
-            AND admin_level IN ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10')
-            AND osm_id < 0
-          ORDER BY admin_level::integer DESC -- With 10 as a valid value, we need to do a numeric ordering, not a text ordering
-        ) AS admin_high_zoom
-    properties:
-      minzoom: 13
   - id: power-minorline
     geometry: linestring
     <<: *extents
@@ -1202,27 +1149,6 @@ Layer:
         ) AS tourism_boundary
     properties:
       minzoom: 10
-  - id: protected-areas
-    geometry: polygon
-    <<: *extents
-    Datasource:
-      <<: *osm2pgsql
-      table: |-
-        (SELECT
-            way,
-            boundary,
-            tags->'protect_class' AS protect_class,
-            way_area/NULLIF(POW(!scale_denominator!*0.001*0.28,2),0) AS way_pixels
-          FROM planet_osm_polygon
-          WHERE (boundary IN ('aboriginal_lands', 'national_park')
-                 OR leisure = 'nature_reserve'
-                 OR (boundary = 'protected_area' AND tags->'protect_class' IN ('1','1a','1b','2','3','4','5','6')))
-            AND building IS NULL
-            AND way_area > 1*!pixel_width!::real*!pixel_height!::real
-        ) AS protected_areas
-    properties:
-      cache-features: true
-      minzoom: 8
   - id: trees
     geometry: polygon
     <<: *extents
@@ -1444,38 +1370,6 @@ Layer:
     properties:
       cache-features: true
       minzoom: 12
-  - id: junctions
-    geometry: point
-    <<: *extents
-    Datasource:
-      <<: *osm2pgsql
-      table: |-
-        (SELECT
-            way,
-            highway,
-            junction,
-            ref,
-            COALESCE(tags->'name:en', '') as name,
-            NULL AS way_pixels
-          FROM planet_osm_point
-          WHERE way && !bbox!
-            AND (highway = 'motorway_junction' OR highway = 'traffic_signals' OR junction = 'yes')
-        UNION ALL
-          SELECT
-            ST_PointOnSurface(way) AS way,
-            highway,
-            junction,
-            ref,
-            name,
-            way_area/NULLIF(POW(!scale_denominator!*0.001*0.28,2),0) AS way_pixels
-          FROM planet_osm_polygon
-          WHERE way && !bbox! -- Not ST_PointOnSurface(way) because name might be NULL
-            AND junction = 'yes'
-            AND way_area < 768000*POW(!scale_denominator!*0.001*0.28,2)
-          ORDER BY way_pixels DESC NULLS LAST
-        ) AS junctions
-    properties:
-      minzoom: 11
   - id: bridge-text
     geometry: point
     <<: *extents
@@ -1587,7 +1481,7 @@ Layer:
                                                        'telescope', 'tower', 'wastewater_plant', 'water_tower', 'water_works', 'windmill', 'works')
                                             AND (tags->'location' NOT IN ('roof', 'rooftop') OR NOT (tags ? 'location'))) THEN man_made END,
                 'landuse_' || CASE WHEN landuse IN ('reservoir', 'basin', 'recreation_ground', 'village_green', 'quarry', 'vineyard', 'orchard', 'cemetery',
-                                                    'residential', 'garages', 'meadow', 'grass', 'allotments', 'forest', 'farmyard', 'farmland',
+                                                    'garages', 'meadow', 'grass', 'allotments', 'forest', 'farmyard', 'farmland',
                                                     'greenhouse_horticulture', 'retail', 'industrial', 'railway', 'commercial', 'brownfield', 'landfill',
                                                     'construction', 'salt_pond', 'military', 'plant_nursery') THEN landuse END,
                 'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'cave_entrance') AND way_area IS NULL THEN "natural" END,
@@ -2057,7 +1951,6 @@ Layer:
               'natural_' || CASE WHEN "natural" IN ('wood', 'glacier', 'sand', 'scree', 'shingle', 'bare_rock', 'water') THEN "natural" END,
               'place_' || CASE WHEN place IN ('island') THEN place END,
               'boundary_' || CASE WHEN boundary IN ('aboriginal_lands', 'national_park')
-                                       OR (boundary = 'protected_area' AND tags->'protect_class' IN ('1','1a','1b','2','3','4','5','6'))
                                        THEN boundary END,
               'leisure_' || CASE WHEN leisure IN ('nature_reserve') THEN leisure END
             ) AS feature,
@@ -2071,7 +1964,6 @@ Layer:
               OR "natural" IN ('wood', 'glacier', 'sand', 'scree', 'shingle', 'bare_rock', 'water')
               OR "place" IN ('island')
               OR boundary IN ('aboriginal_lands', 'national_park')
-              OR (boundary = 'protected_area' AND tags->'protect_class' IN ('1','1a','1b','2','3','4','5','6'))
               OR leisure IN ('nature_reserve'))
             AND building IS NULL
             AND way_area > 100*POW(!scale_denominator!*0.001*0.28,2)
@@ -2253,26 +2145,6 @@ Layer:
         ) AS admin_text
     properties:
       minzoom: 11
-  - id: protected-areas-text
-    geometry: linestring
-    <<: *extents
-    Datasource:
-      <<: *osm2pgsql
-      table: |-
-        (SELECT
-            way,
-            COALESCE(tags->'name:en', '') as name,
-            boundary,
-            tags->'protect_class' AS protect_class,
-            way_area/NULLIF(POW(!scale_denominator!*0.001*0.28,2),0) AS way_pixels
-          FROM planet_osm_polygon
-          WHERE (boundary IN ('aboriginal_lands', 'national_park')
-                 OR leisure = 'nature_reserve'
-                 OR (boundary = 'protected_area' AND tags->'protect_class' IN ('1','1a','1b','2','3','4','5','6')))
-            AND name IS NOT NULL
-        ) AS protected_areas_text
-    properties:
-      minzoom: 13
   - id: amenity-low-priority
     geometry: point
     <<: *extents
